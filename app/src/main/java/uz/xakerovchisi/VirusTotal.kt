@@ -3,9 +3,11 @@ package uz.xakerovchisi
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Base64
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.security.MessageDigest
 
 sealed class VtOutcome {
@@ -141,6 +143,66 @@ object VirusTotal {
             val body = c.inputStream.bufferedReader().use { it.readText() }
             c.disconnect()
             JSONObject(body).optJSONObject("data")?.optString("id")
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun urlId(url: String): String =
+        Base64.encodeToString(url.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+
+    fun lookupUrl(apiKey: String, url: String): VtOutcome {
+        return try {
+            val id = urlId(url)
+            val c = URL("https://www.virustotal.com/api/v3/urls/$id").openConnection() as HttpURLConnection
+            c.requestMethod = "GET"
+            c.setRequestProperty("x-apikey", apiKey)
+            c.connectTimeout = 10000
+            c.readTimeout = 15000
+            val code = c.responseCode
+            when (code) {
+                200 -> {
+                    val body = c.inputStream.bufferedReader().use { it.readText() }
+                    c.disconnect()
+                    parseReport(body)
+                }
+                404 -> {
+                    c.disconnect()
+                    VtOutcome.NotFound
+                }
+                401, 403 -> {
+                    c.disconnect()
+                    VtOutcome.Error("API kalit noto'g'ri")
+                }
+                else -> {
+                    c.disconnect()
+                    VtOutcome.Error("Server xatosi ($code)")
+                }
+            }
+        } catch (e: Exception) {
+            VtOutcome.Error("Internetga ulanib bo'lmadi")
+        }
+    }
+
+    fun submitUrl(apiKey: String, url: String): String? {
+        return try {
+            val c = URL("https://www.virustotal.com/api/v3/urls").openConnection() as HttpURLConnection
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setRequestProperty("x-apikey", apiKey)
+            c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            c.connectTimeout = 10000
+            c.readTimeout = 20000
+            val body = "url=" + URLEncoder.encode(url, "UTF-8")
+            c.outputStream.use { it.write(body.toByteArray()) }
+            val code = c.responseCode
+            if (code !in 200..299) {
+                c.disconnect()
+                return null
+            }
+            val resp = c.inputStream.bufferedReader().use { it.readText() }
+            c.disconnect()
+            JSONObject(resp).optJSONObject("data")?.optString("id")
         } catch (e: Exception) {
             null
         }

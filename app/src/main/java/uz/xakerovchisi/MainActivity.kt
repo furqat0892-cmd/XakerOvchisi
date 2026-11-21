@@ -16,14 +16,17 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.journeyapps.barcodescanner.IntentIntegrator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -42,6 +45,7 @@ class MainActivity : Activity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var content: android.widget.FrameLayout
+    private lateinit var statusLine: TextView
     private lateinit var tabButtons: List<Button>
     private var current = 0
 
@@ -61,6 +65,11 @@ class MainActivity : Activity() {
     private var vtNotFound = false
     private var vtTooLarge = false
     private var vtPendingUri: Uri? = null
+    private var lkBusy = false
+    private var lkStage = ""
+    private var lkTarget: String? = null
+    private var lkResult: VtOutcome.Found? = null
+    private var lkError: String? = null
 
     private val refresher = Runnable { if (current == 0) show(0) }
 
@@ -74,8 +83,12 @@ class MainActivity : Activity() {
         root.setBackgroundColor(BG)
 
         val title = tv("XAKER OVCHISI", 18f, GREEN, true)
-        title.setPadding(dp(16), dp(14), dp(16), dp(6))
+        title.setPadding(dp(16), dp(14), dp(16), dp(0))
         root.addView(title)
+
+        statusLine = tv("", 12f, MUTED)
+        statusLine.setPadding(dp(16), dp(2), dp(16), dp(8))
+        root.addView(statusLine)
 
         content = android.widget.FrameLayout(this)
         root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -83,7 +96,10 @@ class MainActivity : Activity() {
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.setBackgroundColor(CARD)
-        val names = listOf("Tuzoq", "Tarmoq", "Ilovalar", "APK", "Log", "Jurnal")
+        val names = listOf(
+            "🕸 Tuzoq", "📶 Tarmoq", "📱 Ilovalar",
+            "🛡 APK", "🔗 Havola", "📄 Log", "📋 Jurnal"
+        )
         tabButtons = names.mapIndexed { i, n ->
             val b = Button(this)
             b.text = n
@@ -91,11 +107,17 @@ class MainActivity : Activity() {
             b.textSize = 12f
             b.setBackgroundColor(Color.TRANSPARENT)
             b.setTextColor(MUTED)
+            b.setPadding(dp(16), 0, dp(16), 0)
+            b.minWidth = 0
+            b.minimumWidth = 0
             b.setOnClickListener { show(i) }
             b
         }
-        tabButtons.forEach { bar.addView(it, LinearLayout.LayoutParams(0, dp(52), 1f)) }
-        root.addView(bar)
+        tabButtons.forEach { bar.addView(it, LinearLayout.LayoutParams(-2, dp(52))) }
+        val barScroll = HorizontalScrollView(this)
+        barScroll.isHorizontalScrollBarEnabled = false
+        barScroll.addView(bar)
+        root.addView(barScroll)
 
         setContentView(root)
 
@@ -111,7 +133,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (current == 0 || current == 5) show(current)
+        if (current == 0 || current == 6) show(current)
     }
 
     override fun onPause() {
@@ -209,7 +231,18 @@ class MainActivity : Activity() {
             2 -> AMBER
             else -> MUTED
         }
-        return card(tv("${fmt(e.time)} · ${e.type}", 12f, c, true), tv(e.text, 13f, TEXT))
+        val stripe = View(this)
+        stripe.setBackgroundColor(c)
+        val body = card(tv("${fmt(e.time)} · ${e.type}", 12f, c, true), tv(e.text, 13f, TEXT))
+        body.layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        val rowLp = LinearLayout.LayoutParams(-1, -2)
+        rowLp.setMargins(0, 0, 0, dp(10))
+        row.layoutParams = rowLp
+        row.addView(stripe, LinearLayout.LayoutParams(dp(4), -1))
+        row.addView(body)
+        return row
     }
 
     private fun show(i: Int) {
@@ -223,11 +256,22 @@ class MainActivity : Activity() {
                 1 -> tabNet()
                 2 -> tabApps()
                 3 -> tabApk()
-                4 -> tabLog()
+                4 -> tabHavola()
+                5 -> tabLog()
                 else -> tabJournal()
             }
         )
+        updateStatusLine()
         if (i == 0) handler.postDelayed(refresher, 3000)
+    }
+
+    private fun updateStatusLine() {
+        val on = HoneypotService.running
+        val events = EventLog.all(this)
+        val last = events.firstOrNull()
+        val lastText = if (last != null) "oxirgi hodisa: ${fmt(last.time)}" else "hodisalar yo'q"
+        statusLine.text = (if (on) "🟢 Tuzoq yoqilgan" else "⚪ Tuzoq o'chiq") +
+            "  ·  $lastText  ·  jami ${events.size}"
     }
 
     // ---------------------------------------------------------------- 1. Tuzoq
@@ -256,6 +300,18 @@ class MainActivity : Activity() {
                 )
             )
         )
+        if (!isIgnoringBatteryOptimizations()) {
+            items.add(
+                card(
+                    tv(
+                        "Ba'zi telefonlarda (ayniqsa Xiaomi/Redmi) tizim fon xizmatlarini o'chirib qo'yadi va " +
+                            "tuzoq to'xtab qoladi. Bunga yo'l qo'ymaslik uchun batareya cheklovidan chiqaring.",
+                        13f, AMBER
+                    )
+                )
+            )
+            items.add(btn("Batareya cheklovidan chiqarish", AMBER) { requestIgnoreBattery() })
+        }
         items.add(tv("Oxirgi urinishlar", 16f, TEXT, true))
         val ev = EventLog.all(this).filter { it.type == "Tuzoq" && it.severity >= 2 }.take(8)
         if (ev.isEmpty()) items.add(tv("Hozircha urinish yo'q.", 13f, MUTED))
@@ -265,8 +321,25 @@ class MainActivity : Activity() {
 
     private fun toggleTrap() {
         val i = Intent(this, HoneypotService::class.java)
-        if (HoneypotService.running) stopService(i) else startForegroundService(i)
+        val turningOn = !HoneypotService.running
+        if (turningOn) startForegroundService(i) else stopService(i)
+        getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("trap_enabled", turningOn).apply()
         handler.postDelayed({ if (current == 0) show(0) }, 700)
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun requestIgnoreBattery() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            )
+        } catch (e: Exception) {
+            toast("Sozlamalarni ochib bo'lmadi")
+        }
     }
 
     // ---------------------------------------------------------------- 2. Tarmoq
@@ -664,7 +737,156 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------------------------------------------------------------- 4. Log tahlili
+    // ---------------------------------------------------------------- Havola/QR tekshiruvi
+
+    private fun tabHavola(): View {
+        val items = ArrayList<View>()
+        val key = apiKey()
+        items.add(
+            card(
+                tv(
+                    "SMS, Telegram yoki email orqali kelgan shubhali havolani tekshiring — fishing (soxta " +
+                        "login sahifasi) yoki zararli sayt ekanini aniqlaydi. QR kod orqali kelgan havolani ham " +
+                        "ochmasdan oldin shu yerda tekshirishingiz mumkin.",
+                    13f, MUTED
+                )
+            )
+        )
+        if (key.isEmpty()) {
+            items.add(card(tv("Avval APK bo'limida VirusTotal API kalitini sozlang.", 13f, AMBER)))
+            return page(items)
+        }
+        val input = EditText(this)
+        input.hint = "https://... havolani shu yerga joylang"
+        input.setSingleLine()
+        input.setTextColor(TEXT)
+        input.setHintTextColor(MUTED)
+        items.add(input)
+        items.add(btn(if (lkBusy) "Kuting..." else "Havolani tekshirish", GREEN) {
+            checkUrl(input.text.toString())
+        })
+        items.add(btn("QR kodni skanerlash", AMBER) { pickQr() })
+        if (lkBusy) items.add(card(tv(lkStage, 14f, AMBER, true)))
+        val target = lkTarget
+        if (target != null && !lkBusy) {
+            val r = lkResult
+            val err = lkError
+            when {
+                r != null -> items.add(linkResultCard(target, r))
+                err != null -> items.add(card(tv(target, 13f, TEXT, true), tv(err, 13f, RED)))
+            }
+        }
+        items.add(
+            card(
+                tv(
+                    "Eslatma: natija 100% kafolat emas, lekin ko'pchilik fishing va firibgar saytlarni " +
+                        "aniqlaydi. Shubhali havolaga hech qachon parol, karta yoki kod kiritmang.",
+                    12f, MUTED
+                )
+            )
+        )
+        return page(items)
+    }
+
+    private fun linkResultCard(url: String, r: VtOutcome.Found): View {
+        val total = r.malicious + r.suspicious + r.harmless + r.undetected
+        val danger = r.malicious > 0
+        val warn = !danger && r.suspicious > 0
+        val color = if (danger) RED else if (warn) AMBER else GREEN
+        val verdict = when {
+            danger -> "XAVFLI HAVOLA: ${r.malicious}/$total antivirus zararli deb topdi"
+            warn -> "Shubhali: ${r.suspicious}/$total dastur shubhali deb topdi"
+            else -> "Xavfsiz ko'rinadi ($total tekshiruvdan)"
+        }
+        return card(tv(url, 13f, TEXT, true), tv(verdict, 15f, color, true))
+    }
+
+    private fun pickQr() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), 2)
+            return
+        }
+        IntentIntegrator(this)
+            .setOrientationLocked(false)
+            .setBeepEnabled(true)
+            .setPrompt("QR kodni kameraga tuting")
+            .initiateScan()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 2 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            pickQr()
+        }
+    }
+
+    private fun finishLinkCheck(outcome: VtOutcome, url: String) {
+        lkBusy = false
+        when (outcome) {
+            is VtOutcome.Found -> {
+                lkResult = outcome
+                val danger = outcome.malicious > 0
+                EventLog.add(
+                    this, "Havola tekshiruvi", if (danger) 3 else 1,
+                    "$url: ${outcome.malicious} xavfli deb topdi"
+                )
+                if (danger) {
+                    Alerts.raise(this, "Havola tekshiruvi", 3, "XAVFLI HAVOLA: $url (${outcome.malicious} antivirus)")
+                }
+            }
+            is VtOutcome.Error -> lkError = outcome.message
+            VtOutcome.NotFound -> lkError = "Natija topilmadi"
+        }
+        if (current == 4) show(4)
+    }
+
+    private fun checkUrl(urlRaw: String) {
+        var url = urlRaw.trim()
+        if (url.isEmpty()) return
+        if (!url.contains("://")) url = "http://$url"
+        lkBusy = true
+        lkStage = "VirusTotal'dan so'ralmoqda..."
+        lkTarget = url
+        lkResult = null
+        lkError = null
+        show(4)
+        val key = apiKey()
+        if (key.isEmpty()) {
+            lkBusy = false
+            lkError = "Avval VirusTotal API kalitni sozlang (APK bo'limida)"
+            show(4)
+            return
+        }
+        thread {
+            val first = VirusTotal.lookupUrl(key, url)
+            if (first is VtOutcome.NotFound) {
+                runOnUiThread {
+                    lkStage = "Yuborilmoqda..."
+                    if (current == 4) show(4)
+                }
+                val id = VirusTotal.submitUrl(key, url)
+                if (id == null) {
+                    runOnUiThread { finishLinkCheck(VtOutcome.Error("Yuborib bo'lmadi"), url) }
+                    return@thread
+                }
+                val second = VirusTotal.pollAnalysis(key, id) { sec ->
+                    runOnUiThread {
+                        lkStage = "Tekshirilmoqda... (${sec}s)"
+                        if (current == 4) show(4)
+                    }
+                }
+                runOnUiThread { finishLinkCheck(second, url) }
+            } else {
+                runOnUiThread { finishLinkCheck(first, url) }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- 5. Log tahlili
 
     private fun tabLog(): View {
         val items = ArrayList<View>()
@@ -729,6 +951,11 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        val qr = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
+        if (qr != null) {
+            qr.contents?.let { checkUrl(it) }
+            return
+        }
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         when (requestCode) {
@@ -739,7 +966,7 @@ class MainActivity : Activity() {
 
     private fun processLog(uri: Uri) {
         analyzing = true
-        show(4)
+        show(5)
         thread {
             var res: List<Finding>? = null
             try {
@@ -759,12 +986,12 @@ class MainActivity : Activity() {
                     lastLog = result
                     EventLog.add(this, "Log tahlili", 1, "${result.size} ta shubhali IP topildi")
                 }
-                if (current == 4) show(4)
+                if (current == 5) show(5)
             }
         }
     }
 
-    // ---------------------------------------------------------------- 5. Jurnal
+    // ---------------------------------------------------------------- 6. Jurnal
 
     private fun tabJournal(): View {
         val items = ArrayList<View>()
@@ -772,14 +999,28 @@ class MainActivity : Activity() {
         items.add(btn(if (tg) "Telegram ulangan (o'zgartirish)" else "Telegram ogohlantirishni sozlash", GRAY) {
             telegramDialog()
         })
+        items.add(btn("Hisobotni PDF qilib saqlash/ulashish", GRAY) { exportReport() })
         items.add(btn("Jurnalni tozalash", GRAY) {
             EventLog.clear(this)
-            show(4)
+            show(6)
         })
         val ev = EventLog.all(this)
         if (ev.isEmpty()) items.add(tv("Jurnal bo'sh.", 13f, MUTED))
         for (e in ev.take(100)) items.add(eventRow(e))
         return page(items)
+    }
+
+    private fun exportReport() {
+        toast("Hisobot tayyorlanmoqda...")
+        thread {
+            try {
+                val events = EventLog.all(this)
+                val file = ReportExporter.buildPdf(this, events)
+                runOnUiThread { ReportExporter.shareFile(this, file) }
+            } catch (e: Exception) {
+                runOnUiThread { toast("Hisobot yaratib bo'lmadi: ${e.message}") }
+            }
+        }
     }
 
     private fun telegramDialog() {
@@ -815,7 +1056,7 @@ class MainActivity : Activity() {
                         toast(if (ok) "Telegram'ga yuborildi" else "Yuborib bo'lmadi, token va chat ID'ni tekshiring")
                     }
                 }
-                show(4)
+                show(6)
             }
             .setNegativeButton("Bekor", null)
             .show()
