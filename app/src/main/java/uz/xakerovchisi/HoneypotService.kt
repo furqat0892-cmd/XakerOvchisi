@@ -50,6 +50,8 @@ class HoneypotService : Service() {
         if (!running) {
             running = true
             services.keys.forEach { listen(it) }
+            CanaryFiles.setup(this)
+            CanaryFiles.start(this)
             EventLog.add(this, "Tuzoq", 1, "Tuzoq yoqildi")
         }
         return START_STICKY
@@ -57,6 +59,7 @@ class HoneypotService : Service() {
 
     override fun onDestroy() {
         running = false
+        CanaryFiles.stop()
         synchronized(sockets) {
             sockets.forEach {
                 try {
@@ -126,6 +129,7 @@ class HoneypotService : Service() {
                 String(buf, 0, n, Charsets.ISO_8859_1).filter { it.code in 32..126 }.take(60)
             } else ""
             if (ip == "127.0.0.1") return
+            val count = AttackerStats.record(this, ip)
             val now = System.currentTimeMillis()
             val skip = synchronized(lastSeen) {
                 val l = lastSeen[ip] ?: 0L
@@ -137,8 +141,15 @@ class HoneypotService : Service() {
                 }
             }
             if (skip) return
+            val geo = IpGeo.lookup(ip)
             var msg = "Port $port (${services[port]}) ga ulanish urinishi: $ip"
+            if (geo != null) msg += "\nJoylashuv: $geo"
             if (first.isNotBlank()) msg += "\nYuborgan ma'lumot: $first"
+            msg += if (count >= AttackerStats.DANGER_THRESHOLD) {
+                "\n⚠️ XAVFLI IP — jami $count marta urindi!"
+            } else {
+                "\n(jami $count marta urindi)"
+            }
             Alerts.raise(this, "Tuzoq", 3, msg)
         } catch (e: Exception) {
         } finally {

@@ -32,6 +32,8 @@ import java.util.Date
 import java.util.Locale
 import kotlin.concurrent.thread
 
+data class NetDevice(val ip: String, val mac: String?, val vendor: String?)
+
 class MainActivity : Activity() {
 
     private val BG = Color.parseColor("#0D1117")
@@ -51,7 +53,7 @@ class MainActivity : Activity() {
 
     // so'nggi natijalar (bo'limlar almashganda yo'qolmasligi uchun)
     private var scanning = false
-    private var lastScan: List<String>? = null
+    private var lastScan: List<NetDevice>? = null
     private var lastMe: String? = null
     private var auditing = false
     private var lastApps: List<AppRisk>? = null
@@ -284,8 +286,9 @@ class MainActivity : Activity() {
                 tv(if (on) "Tuzoq YOQILGAN" else "Tuzoq o'chiq", 20f, if (on) GREEN else MUTED, true),
                 tv(
                     "Telefon Wi-Fi tarmog'ida soxta xizmatlarni ko'rsatadi: SSH (2222, 8022), Telnet (2323), " +
-                        "HTTP (8080, 8888), ADB (5555). Kimdir ularga ulanishga urinsa, IP manzili jurnalga " +
-                        "yoziladi va ogohlantirish keladi.",
+                        "HTTP (8080, 8888), ADB (5555). Kimdir ularga ulanishga urinsa, IP manzili, taxminiy " +
+                        "joylashuvi va necha marta urinishi qayd etiladi. Shu bilan birga telefon xotirasida " +
+                        "\"o'lja\" fayllar turadi — ularga tegilsa ham ogohlantirish keladi.",
                     13f, MUTED
                 )
             )
@@ -311,6 +314,22 @@ class MainActivity : Activity() {
                 )
             )
             items.add(btn("Batareya cheklovidan chiqarish", AMBER) { requestIgnoreBattery() })
+        }
+        val stats = AttackerStats.all(this).take(5)
+        if (stats.isNotEmpty()) {
+            items.add(tv("Eng ko'p urinishlar (takroriy hujumchilar)", 16f, TEXT, true))
+            for ((ip, count) in stats) {
+                val dangerous = count >= AttackerStats.DANGER_THRESHOLD
+                items.add(
+                    card(
+                        tv(ip, 15f, if (dangerous) RED else TEXT, true),
+                        tv(
+                            (if (dangerous) "⚠️ XAVFLI · " else "") + "$count marta urindi",
+                            12f, if (dangerous) RED else MUTED
+                        )
+                    )
+                )
+            }
         }
         items.add(tv("Oxirgi urinishlar", 16f, TEXT, true))
         val ev = EventLog.all(this).filter { it.type == "Tuzoq" && it.severity >= 2 }.take(8)
@@ -365,7 +384,8 @@ class MainActivity : Activity() {
         } else {
             val base = trusted()
             items.add(tv("Topilgan qurilmalar: ${found.size}", 16f, TEXT, true))
-            for (ip in found) {
+            for (dev in found) {
+                val ip = dev.ip
                 val tag = when {
                     ip == lastMe -> "Siz (bu telefon)"
                     base.isNotEmpty() && ip !in base -> "YANGI qurilma"
@@ -373,16 +393,21 @@ class MainActivity : Activity() {
                     else -> ""
                 }
                 val isNew = tag == "YANGI qurilma"
+                val sub = buildString {
+                    append(if (tag.isEmpty()) "Faol qurilma" else tag)
+                    if (dev.mac != null) append(" · ${dev.mac}")
+                    if (dev.vendor != null) append(" · ${dev.vendor}")
+                }
                 items.add(
                     card(
                         tv(ip, 15f, if (isNew) RED else TEXT, true),
-                        tv(if (tag.isEmpty()) "Faol qurilma" else tag, 12f, if (isNew) RED else MUTED)
+                        tv(sub, 12f, if (isNew) RED else MUTED)
                     )
                 )
             }
             items.add(btn("Hozirgilarni ishonchli deb belgilash", GRAY) {
                 getSharedPreferences("settings", MODE_PRIVATE).edit()
-                    .putStringSet("trusted", found.toSet()).apply()
+                    .putStringSet("trusted", found.map { it.ip }.toSet()).apply()
                 toast("Saqlandi: ${found.size} ta qurilma")
                 show(1)
             })
@@ -409,12 +434,18 @@ class MainActivity : Activity() {
         scanning = true
         show(1)
         thread {
-            val found = NetScanner.scan(me)
+            val ips = NetScanner.scan(me)
+            val found = ips.map { ip ->
+                val mac = NetScanner.macFor(ip)
+                val vendor = MacVendor.lookup(mac)
+                NetDevice(ip, mac, vendor)
+            }
             val base = trusted()
             if (base.isNotEmpty()) {
-                for (ip in found) {
-                    if (ip != me && ip !in base) {
-                        Alerts.raise(this, "Tarmoq", 2, "Tarmoqda yangi qurilma: $ip")
+                for (dev in found) {
+                    if (dev.ip != me && dev.ip !in base) {
+                        val extra = dev.vendor?.let { " ($it)" } ?: ""
+                        Alerts.raise(this, "Tarmoq", 2, "Tarmoqda yangi qurilma: ${dev.ip}$extra")
                     }
                 }
             }

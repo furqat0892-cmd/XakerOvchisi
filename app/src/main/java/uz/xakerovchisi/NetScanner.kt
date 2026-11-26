@@ -44,6 +44,22 @@ object NetScanner {
         return res
     }
 
+    /** /proc/net/arp orqali shu IP uchun MAC manzilni topadi (Android'da ko'pincha o'qiladigan fayl). */
+    fun macFor(ip: String): String? {
+        try {
+            val lines = java.io.File("/proc/net/arp").readLines()
+            for (line in lines.drop(1)) {
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size >= 4 && parts[0] == ip) {
+                    val mac = parts[3]
+                    if (mac != "00:00:00:00:00:00") return mac
+                }
+            }
+        } catch (e: Exception) {
+        }
+        return null
+    }
+
     private fun alive(ip: String): Boolean {
         try {
             if (InetAddress.getByName(ip).isReachable(250)) return true
