@@ -58,6 +58,9 @@ class MainActivity : Activity() {
     private var auditing = false
     private var lastApps: List<AppRisk>? = null
     private var analyzing = false
+    private var checkingAccount = false
+    private var lastBreachEmail: String? = null
+    private var lastBreachResult: String? = null
     private var lastLog: List<Finding>? = null
     private var vtBusy = false
     private var vtStage = ""
@@ -100,7 +103,7 @@ class MainActivity : Activity() {
         bar.setBackgroundColor(CARD)
         val names = listOf(
             "🕸 Tuzoq", "📶 Tarmoq", "📱 Ilovalar",
-            "🛡 APK", "🔗 Havola", "📄 Log", "📋 Jurnal"
+            "🛡 APK", "🔗 Havola", "📄 Log", "🧠 Hisob", "📋 Jurnal"
         )
         tabButtons = names.mapIndexed { i, n ->
             val b = Button(this)
@@ -135,7 +138,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (current == 0 || current == 6) show(current)
+        if (current == 0 || current == 7) show(current)
     }
 
     override fun onPause() {
@@ -235,7 +238,19 @@ class MainActivity : Activity() {
         }
         val stripe = View(this)
         stripe.setBackgroundColor(c)
-        val body = card(tv("${fmt(e.time)} · ${e.type}", 12f, c, true), tv(e.text, 13f, TEXT))
+        val textView = tv(e.text, 13f, TEXT)
+        val longText = e.text.length > 140 || e.text.contains("\n")
+        if (longText) {
+            textView.maxLines = 3
+            textView.ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        val body = card(tv("${fmt(e.time)} · ${e.type}", 12f, c, true), textView)
+        if (longText) {
+            body.addView(tv("(to'liq ko'rish uchun bosing)", 11f, MUTED))
+            body.setOnClickListener {
+                textView.maxLines = if (textView.maxLines == 3) Integer.MAX_VALUE else 3
+            }
+        }
         body.layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
@@ -260,6 +275,7 @@ class MainActivity : Activity() {
                 3 -> tabApk()
                 4 -> tabHavola()
                 5 -> tabLog()
+                6 -> tabAccount()
                 else -> tabJournal()
             }
         )
@@ -1022,7 +1038,76 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------------------------------------------------------------- 6. Jurnal
+    // ---------------------------------------------------------------- 6. Hisob
+
+    private fun tabAccount(): View {
+        val items = ArrayList<View>()
+        items.add(tv("Hisob xavfsizligi", 20f, TEXT, true))
+        items.add(
+            card(
+                tv(
+                    "Email manzilingiz avvalgi ma'lumot sizishlarida (data breach) chiqqan-chiqmaganini " +
+                        "tekshiring. Email faqat tekshiruv uchun yuboriladi, saqlanmaydi.",
+                    13f, MUTED
+                )
+            )
+        )
+        val input = EditText(this)
+        input.hint = "email@misol.com"
+        input.setTextColor(TEXT)
+        input.setHintTextColor(MUTED)
+        input.background = box(GRAY, 10)
+        input.setPadding(dp(14), dp(12), dp(14), dp(12))
+        lastBreachEmail?.let { input.setText(it) }
+        val inputLp = LinearLayout.LayoutParams(-1, -2)
+        inputLp.setMargins(0, 0, 0, dp(10))
+        input.layoutParams = inputLp
+        items.add(input)
+        items.add(btn(if (checkingAccount) "Tekshirilmoqda..." else "Tekshirish") {
+            val email = input.text.toString().trim()
+            if (email.isEmpty() || !email.contains("@")) {
+                toast("To'g'ri email kiriting")
+                return@btn
+            }
+            checkingAccount = true
+            lastBreachEmail = email
+            show(6)
+            thread {
+                val result = BreachCheck.check(email)
+                runOnUiThread {
+                    checkingAccount = false
+                    lastBreachResult = result
+                    if (current == 6) show(6)
+                }
+            }
+        })
+        lastBreachResult?.let { res ->
+            val danger = res.startsWith("TOPILDI")
+            items.add(
+                card(
+                    tv(if (danger) "⚠️ Xavfli!" else "✅ Natija", 15f, if (danger) RED else GREEN, true),
+                    tv(res, 13f, TEXT)
+                )
+            )
+        }
+        items.add(tv("Xavfsizlik maslahatlari", 16f, TEXT, true))
+        val tips = listOf(
+            "SMS yoki qo'ng'iroq orqali kelgan tasdiqlash kodini hech kimga aytmang — bank yoki hech bir " +
+                "xizmat buni so'ramaydi.",
+            "Noma'lum \"ish taklifi\" yoki \"g'alaba qozondingiz\" xabarlaridagi havola/faylni ochmang.",
+            "Har bir muhim hisobda (email, bank, ijtimoiy tarmoq) ikki bosqichli tasdiqlash (2FA)ni albatta " +
+                "yoqing — iloji boricha SMS emas, Authenticator ilovasi orqali.",
+            "Har xil saytlarda bir xil parol ishlatmang.",
+            "Shubhali havolani bosishdan oldin \"Havola\" bo'limida tekshirib ko'ring.",
+            "Noma'lum manbadan (Play Market'dan tashqari) APK fayl o'rnatmang — avval \"APK\" bo'limida " +
+                "tekshiring.",
+            "Telefoningizni begonaga bermang — hatto \"bir qo'ng'iroq qilsam\" desa ham."
+        )
+        for (t in tips) items.add(card(tv(t, 13f, TEXT)))
+        return page(items)
+    }
+
+    // ---------------------------------------------------------------- 7. Jurnal
 
     private fun tabJournal(): View {
         val items = ArrayList<View>()
@@ -1033,7 +1118,7 @@ class MainActivity : Activity() {
         items.add(btn("Hisobotni PDF qilib saqlash/ulashish", GRAY) { exportReport() })
         items.add(btn("Jurnalni tozalash", GRAY) {
             EventLog.clear(this)
-            show(6)
+            show(7)
         })
         val ev = EventLog.all(this)
         if (ev.isEmpty()) items.add(tv("Jurnal bo'sh.", 13f, MUTED))
@@ -1087,7 +1172,7 @@ class MainActivity : Activity() {
                         toast(if (ok) "Telegram'ga yuborildi" else "Yuborib bo'lmadi, token va chat ID'ni tekshiring")
                     }
                 }
-                show(6)
+                show(7)
             }
             .setNegativeButton("Bekor", null)
             .show()

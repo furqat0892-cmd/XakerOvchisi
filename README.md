@@ -18,6 +18,8 @@ Android himoya ilovasi: telefon yordamida xakerlarni va shubhali faoliyatni aniq
 - **Havola:** SMS/Telegram orqali kelgan shubhali havolani (yoki QR kodni kamera bilan skanerlab) fishing/
   zararli sayt ekanini VirusTotal orqali tekshiradi — bir xil API kalit ishlatiladi.
 - **Log:** server loglarini tahlil qilib, hujumchi IP'larni topadi.
+- **Hisob:** email manzilingiz avvalgi ma'lumot sizishlarida (data breach) chiqqan-chiqmaganini tekshiradi,
+  va ijtimoiy muhandislik/fishingga qarshi xavfsizlik maslahatlarini ko'rsatadi.
 - **Jurnal:** barcha hodisalar, Telegram ogohlantirish sozlamasi, va hodisalarni PDF hisobot qilib
   saqlash/ulashish.
 

@@ -128,7 +128,7 @@ class HoneypotService : Service() {
             val first = if (n > 0) {
                 String(buf, 0, n, Charsets.ISO_8859_1).filter { it.code in 32..126 }.take(60)
             } else ""
-            if (ip == "127.0.0.1") return
+            if (ip == "127.0.0.1" || ip == "::1" || ip == "0:0:0:0:0:0:0:1") return
             val count = AttackerStats.record(this, ip)
             val now = System.currentTimeMillis()
             val skip = synchronized(lastSeen) {
