@@ -61,6 +61,7 @@ class MainActivity : Activity() {
     private var checkingAccount = false
     private var lastBreachEmail: String? = null
     private var lastBreachResult: String? = null
+    private val VPN_REQUEST_CODE = 99
     private var lastLog: List<Finding>? = null
     private var vtBusy = false
     private var vtStage = ""
@@ -331,6 +332,21 @@ class MainActivity : Activity() {
             )
             items.add(btn("Batareya cheklovidan chiqarish", AMBER) { requestIgnoreBattery() })
         }
+        val dnsOn = DnsVpnService.running
+        items.add(
+            card(
+                tv("Chiquvchi tarmoq kuzatuvi (tajriba)", 15f, TEXT, true),
+                tv(
+                    "Mobil internetda ham ishlaydi — telefon ichidagi biror dastur shubhali/bloklangan " +
+                        "manzilga ulanishga urinsa, aniqlaydi va rad etadi. Bu funksiya tajriba (eksperimental) " +
+                        "bosqichida: agar yoqqandan keyin internet ishlamay qolsa, shunchaki o'chiring.",
+                    12f, MUTED
+                )
+            )
+        )
+        items.add(btn(if (dnsOn) "DNS kuzatuvini o'chirish" else "DNS kuzatuvini yoqish (tajriba)", if (dnsOn) RED else GRAY) {
+            toggleDnsMonitor()
+        })
         val stats = AttackerStats.all(this).take(5)
         if (stats.isNotEmpty()) {
             items.add(tv("Eng ko'p urinishlar (takroriy hujumchilar)", 16f, TEXT, true))
@@ -998,6 +1014,14 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == VPN_REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                startDnsMonitor()
+            } else {
+                toast("Ruxsat berilmadi — DNS kuzatuvi yoqilmadi")
+            }
+            return
+        }
         val qr = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
         if (qr != null) {
             qr.contents?.let { checkUrl(it) }
@@ -1009,6 +1033,27 @@ class MainActivity : Activity() {
             77 -> processLog(uri)
             78 -> processApk(uri)
         }
+    }
+
+    private fun toggleDnsMonitor() {
+        if (DnsVpnService.running) {
+            stopService(Intent(this, DnsVpnService::class.java))
+            toast("DNS kuzatuvi o'chirildi")
+            if (current == 0) show(0)
+            return
+        }
+        val prepareIntent = android.net.VpnService.prepare(this)
+        if (prepareIntent != null) {
+            startActivityForResult(prepareIntent, VPN_REQUEST_CODE)
+        } else {
+            startDnsMonitor()
+        }
+    }
+
+    private fun startDnsMonitor() {
+        startService(Intent(this, DnsVpnService::class.java))
+        toast("DNS kuzatuvi yoqildi (tajriba)")
+        if (current == 0) show(0)
     }
 
     private fun processLog(uri: Uri) {
@@ -1104,6 +1149,55 @@ class MainActivity : Activity() {
             "Telefoningizni begonaga bermang — hatto \"bir qo'ng'iroq qilsam\" desa ham."
         )
         for (t in tips) items.add(card(tv(t, 13f, TEXT)))
+
+        items.add(tv("DNS kuzatuvi uchun bloklash ro'yxati", 16f, TEXT, true))
+        items.add(
+            card(
+                tv(
+                    "\"Tuzoq\" bo'limidagi \"DNS kuzatuvi\" yoqilgan bo'lsa, shu ro'yxatdagi domenlarga " +
+                        "ulanish avtomatik rad etiladi (mobil internetda ham).",
+                    12f, MUTED
+                )
+            )
+        )
+        val domainInput = EditText(this)
+        domainInput.hint = "masalan: shubhali-sayt.com"
+        domainInput.setTextColor(TEXT)
+        domainInput.setHintTextColor(MUTED)
+        domainInput.background = box(GRAY, 10)
+        domainInput.setPadding(dp(14), dp(12), dp(14), dp(12))
+        val domainInputLp = LinearLayout.LayoutParams(-1, -2)
+        domainInputLp.setMargins(0, 0, 0, dp(10))
+        domainInput.layoutParams = domainInputLp
+        items.add(domainInput)
+        items.add(btn("Ro'yxatga qo'shish", GRAY) {
+            val d = domainInput.text.toString().trim()
+            if (d.isEmpty()) {
+                toast("Domen kiriting")
+            } else {
+                DnsBlocklist.add(this, d)
+                toast("Qo'shildi: $d")
+                show(6)
+            }
+        })
+        val blocked = DnsBlocklist.all(this).sorted()
+        if (blocked.isEmpty()) {
+            items.add(tv("Ro'yxat bo'sh.", 13f, MUTED))
+        } else {
+            for (d in blocked) {
+                val row = LinearLayout(this)
+                row.orientation = LinearLayout.HORIZONTAL
+                val label = tv(d, 13f, TEXT)
+                label.layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                row.addView(label)
+                row.addView(btn("O'chirish", RED) {
+                    DnsBlocklist.remove(this, d)
+                    show(6)
+                }.apply { layoutParams = LinearLayout.LayoutParams(dp(110), dp(40)) })
+                row.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, dp(8)) }
+                items.add(row)
+            }
+        }
         return page(items)
     }
 

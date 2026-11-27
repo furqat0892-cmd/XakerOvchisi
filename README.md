@@ -19,7 +19,11 @@ Android himoya ilovasi: telefon yordamida xakerlarni va shubhali faoliyatni aniq
   zararli sayt ekanini VirusTotal orqali tekshiradi — bir xil API kalit ishlatiladi.
 - **Log:** server loglarini tahlil qilib, hujumchi IP'larni topadi.
 - **Hisob:** email manzilingiz avvalgi ma'lumot sizishlarida (data breach) chiqqan-chiqmaganini tekshiradi,
-  va ijtimoiy muhandislik/fishingga qarshi xavfsizlik maslahatlarini ko'rsatadi.
+  ijtimoiy muhandislik/fishingga qarshi xavfsizlik maslahatlarini ko'rsatadi, va DNS kuzatuvi uchun
+  bloklash ro'yxatini boshqarish imkonini beradi.
+- **Chiquvchi DNS kuzatuvi (tajriba, Tuzoq bo'limida):** mobil internetda ham ishlaydi — telefon ichidagi
+  biror dastur bloklash ro'yxatidagi shubhali domenga ulanishga urinsa, rad etadi va ogohlantiradi.
+  Boshqa barcha trafik (veb, ilovalar) odatdagidek ishlashda davom etadi.
 - **Jurnal:** barcha hodisalar, Telegram ogohlantirish sozlamasi, va hodisalarni PDF hisobot qilib
   saqlash/ulashish.
 
