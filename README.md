@@ -22,8 +22,10 @@ Android himoya ilovasi: telefon yordamida xakerlarni va shubhali faoliyatni aniq
   ijtimoiy muhandislik/fishingga qarshi xavfsizlik maslahatlarini ko'rsatadi, va DNS kuzatuvi uchun
   bloklash ro'yxatini boshqarish imkonini beradi.
 - **Chiquvchi DNS kuzatuvi (tajriba, Tuzoq bo'limida):** mobil internetda ham ishlaydi — telefon ichidagi
-  biror dastur bloklash ro'yxatidagi shubhali domenga ulanishga urinsa, rad etadi va ogohlantiradi.
-  Boshqa barcha trafik (veb, ilovalar) odatdagidek ishlashda davom etadi.
+  biror dastur bloklash ro'yxatidagi domenga ulanishga urinsa, rad etadi va ogohlantiradi. Shubhali
+  ko'rinadigan domenlar (brend taqlidi, g'alati kengaytma, tasodifiy nom) avtomatik aniqlanib, "Hisob"
+  bo'limida sozlanadigan holda, so'ramasdan o'zi bloklanadi. Boshqa barcha trafik (veb, ilovalar)
+  odatdagidek ishlashda davom etadi.
 - **Jurnal:** barcha hodisalar, Telegram ogohlantirish sozlamasi, va hodisalarni PDF hisobot qilib
   saqlash/ulashish.
 

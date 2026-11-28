@@ -100,16 +100,32 @@ class DnsVpnService : VpnService() {
         val dnsBytes = buf.copyOfRange(dnsOffset, len)
 
         val domain = parseDnsQuestionName(dnsBytes)
-        if (!domain.isNullOrEmpty() && seenDomains.add(domain)) {
-            EventLog.add(applicationContext, "Tarmoq", 1, "Yangi domenga so'rov: $domain")
-        }
+        if (!domain.isNullOrEmpty()) {
+            val isNew = seenDomains.add(domain)
+            if (isNew) {
+                val suspicious = DomainHeuristic.isSuspicious(domain)
+                val alreadyBlocked = DnsBlocklist.isBlocked(applicationContext, domain)
+                if (suspicious && !alreadyBlocked && DnsBlocklist.autoBlockEnabled(applicationContext)) {
+                    DnsBlocklist.add(applicationContext, domain)
+                    EventLog.add(applicationContext, "Tarmoq", 3, "⛔ Shubhali domen avtomatik bloklandi: $domain")
+                    Alerts.raise(applicationContext, "Tarmoq", 3, "Shubhali domen avtomatik bloklandi: $domain")
+                } else if (suspicious) {
+                    EventLog.add(applicationContext, "Tarmoq", 3, "⚠️ Shubhali ko'rinadigan domenga so'rov: $domain")
+                    Alerts.raise(
+                        applicationContext, "Tarmoq", 2,
+                        "Shubhali domenga so'rov aniqlandi: $domain — \"Havola\" bo'limida tekshiring"
+                    )
+                } else {
+                    EventLog.add(applicationContext, "Tarmoq", 1, "Yangi domenga so'rov: $domain")
+                }
+            }
 
-        if (!domain.isNullOrEmpty() && DnsBlocklist.isBlocked(applicationContext, domain)) {
-            EventLog.add(applicationContext, "Tarmoq", 3, "⚠️ Bloklangan domenga urinish: $domain")
-            Alerts.raise(applicationContext, "Tarmoq", 3, "Bloklangan domen: $domain — ulanish rad etildi")
-            val nx = buildDnsNxDomain(dnsBytes)
-            output.write(buildIpUdpReply(buf, ihl, udpOffset, nx))
-            return
+            if (DnsBlocklist.isBlocked(applicationContext, domain)) {
+                EventLog.add(applicationContext, "Tarmoq", 3, "⚠️ Bloklangan domenga urinish: $domain")
+                val nx = buildDnsNxDomain(dnsBytes)
+                output.write(buildIpUdpReply(buf, ihl, udpOffset, nx))
+                return
+            }
         }
 
         try {

@@ -1160,6 +1160,22 @@ class MainActivity : Activity() {
                 )
             )
         )
+        val autoBlock = DnsBlocklist.autoBlockEnabled(this)
+        items.add(
+            card(
+                tv("Shubhali domenlarni avtomatik bloklash", 14f, TEXT, true),
+                tv(
+                    "Yoqilgan bo'lsa, qizil (shubhali) deb aniqlangan domenlar so'ramasdan ro'yxatga " +
+                        "qo'shilib, darhol bloklanadi. O'chirilgan bo'lsa, faqat ogohlantirish beriladi, " +
+                        "bloklash siz qo'lda qo'shgan domenlar uchungina ishlaydi.",
+                    12f, MUTED
+                )
+            )
+        )
+        items.add(btn(if (autoBlock) "Avtomatik bloklashni o'chirish" else "Avtomatik bloklashni yoqish", if (autoBlock) RED else GREEN) {
+            DnsBlocklist.setAutoBlock(this, !autoBlock)
+            show(6)
+        })
         val domainInput = EditText(this)
         domainInput.hint = "masalan: shubhali-sayt.com"
         domainInput.setTextColor(TEXT)

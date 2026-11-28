@@ -37,4 +37,15 @@ object DnsBlocklist {
         val list = all(ctx)
         return list.any { d == it || d.endsWith(".$it") }
     }
+
+    /** Shubhali ko'rinadigan domenlarni so'ramasdan avtomatik bloklash yoqilganmi (standart: yoqilgan). */
+    fun autoBlockEnabled(ctx: Context): Boolean {
+        val p = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return p.getBoolean("auto_block", true)
+    }
+
+    fun setAutoBlock(ctx: Context, enabled: Boolean) {
+        val p = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        p.edit().putBoolean("auto_block", enabled).apply()
+    }
 }
